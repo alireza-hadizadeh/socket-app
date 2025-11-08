@@ -1,0 +1,6 @@
+[
+  {
+    "type": "sqlite",
+    "path": "d:\\_projects\\NextJs\\socket-app\\socket_events.db"
+  }
+]

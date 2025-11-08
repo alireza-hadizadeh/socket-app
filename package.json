@@ -1,26 +1,46 @@
 {
-  "name": "socket-app",
-  "version": "0.1.0",
+  "name": "socket-io-realtime-app",
+  "version": "1.0.0",
+  "description": "A production-ready real-time communication platform with Socket.io, Next.js, and SQLite",
+  "main": "server.ts",
+  "author": "Artemis Programming Group",
+  "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "dev": "next dev",
+    "socket": "ts-node --project tsconfig.server.json server.ts",
+    "socket:watch": "nodemon --watch . --ext ts --exec 'ts-node --project tsconfig.server.json' server.ts",
+    "dev:all": "concurrently \"npm run dev\" \"npm run socket:watch\"",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "db:init": "ts-node --project tsconfig.server.json -e \"require('./lib/db/database').initializeDatabase()\"",
+    "db:reset": "rm -f socket_events.db && npm run db:init"
   },
   "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "lucide-react": "^0.553.0",
+    "next": "16.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "next": "16.0.1"
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
-    "eslint-config-next": "16.0.1"
+    "eslint-config-next": "16.0.1",
+    "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
   }
 }
