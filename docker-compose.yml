@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"  # Next.js frontend
+      - "3001:3001"  # Socket.IO server
+    environment:
+      - NODE_ENV=production
+      - SOCKET_PORT=3001
+      - DATABASE_PATH=/app/socket_events.db
+    volumes:
+      - ./socket_events.db:/app/socket_events.db  # Persist database
+    restart: unless-stopped
+    container_name: socket-io-app
