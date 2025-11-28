@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import { createServer } from "http";
-import { initializeDatabase, addMessage, addConnection, addDisconnection, getConnections, getMessages } from "./lib/db/database";
+import { initializeDatabase, addMessage, addConnection, addDisconnection, getConnections, getMessages, updateConnectionUser } from "./lib/db/database";
+import { ChannelMessagePayload } from "@/lib/types/ChannelMessagePayload";
 
 // Initialize database
 initializeDatabase();
@@ -12,7 +13,7 @@ const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
     origin: function (origin, callback) {
-      const allowedOrigins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:8000", "http://localhost", "http://127.0.0.1:5500"];
+      const allowedOrigins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:8000", "http://localhost", "http://127.0.0.1:5500", "https://service-new-version.test"];
 
       // Allow if origin is in whitelist or if no origin provided (file://)
       if (!origin || allowedOrigins.includes(origin) || origin.startsWith("file://")) {
@@ -105,7 +106,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle user identification (for Flutter/Laravel apps)
   socket.on("identify", (data) => {
     try {
       const clientInfo = {
@@ -115,6 +115,10 @@ io.on("connection", (socket) => {
       };
 
       connectedClients.set(socketId, { ...connectedClients.get(socketId)!, ...clientInfo });
+
+      log("LOG", `Update Connection identified`, { socketId, ...clientInfo });
+      updateConnectionUser(socketId, clientInfo.userId, clientInfo.platform);
+
       log("INFO", `Client identified`, { socketId, ...clientInfo });
 
       socket.emit("identified", {
@@ -164,6 +168,80 @@ io.on("connection", (socket) => {
   socket.on("error", (error) => {
     log("ERROR", `Socket error`, { socketId, error: String(error) });
   });
+
+  // Join a channel/room, e.g. "chat:123"
+  socket.on("join-channel", (data) => {
+    try {
+      const channel = data.channel as string;
+      const userId = data.userId || socket.id;
+
+      if (!channel) return;
+
+      socket.join(channel);
+
+      const totalInChannel = io.sockets.adapter.rooms.get(channel)?.size || 0;
+
+      io.to(channel).emit("user-joined-channel", {
+        channel,
+        userId,
+        totalInChannel,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error in join-channel", error);
+      socket.emit("error", { message: "Failed to join channel" });
+    }
+  });
+
+  // Leave a channel/room
+  socket.on("leave-channel", (data) => {
+    try {
+      const channel = data.channel as string;
+      const userId = data.userId || socket.id;
+
+      if (!channel) return;
+
+      socket.leave(channel);
+
+      const totalInChannel = io.sockets.adapter.rooms.get(channel)?.size || 0;
+
+      io.to(channel).emit("user-left-channel", {
+        channel,
+        userId,
+        totalInChannel,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error in leave-channel", error);
+      socket.emit("error", { message: "Failed to leave channel" });
+    }
+  });
+
+  socket.on("channel-message", (data: ChannelMessagePayload) => {
+    try {
+      if (!data.channel || !data.text) return;
+
+      const message = {
+        channel: data.channel,
+        sender: data.sender || socket.id,
+        text: data.text,
+        platform: data.platform || "web",
+        timestamp: new Date().toISOString(),
+      };
+
+      // (optional) extend DB to store channel
+      // addMessageWithChannel(socket.id, message.sender, message.text, message.platform, message.channel);
+      log("LOG", `channel-message`, data.channel);
+
+      io.to(data.channel).emit("channel-message-received", {
+        ...message,
+        socketId: socket.id,
+      });
+    } catch (error) {
+      console.error("Error in channel-message", error);
+      socket.emit("error", { message: "Failed to send channel message" });
+    }
+  });
 });
 
 // Handle server errors
@@ -174,15 +252,6 @@ httpServer.on("error", (error) => {
 // Graceful shutdown
 process.on("SIGTERM", () => {
   log("INFO", "SIGTERM received, starting graceful shutdown");
-  io.emit("server-shutting-down", { timestamp: new Date().toISOString() });
-  httpServer.close(() => {
-    log("INFO", "Server closed");
-    process.exit(0);
-  });
-});
-
-process.on("SIGINT", () => {
-  log("INFO", "SIGINT received, starting graceful shutdown");
   io.emit("server-shutting-down", { timestamp: new Date().toISOString() });
   httpServer.close(() => {
     log("INFO", "Server closed");
