@@ -7,7 +7,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 4000",
     "socket": "ts-node --project tsconfig.server.json server.ts",
     "socket:watch": "nodemon --watch . --ext ts --exec 'ts-node --project tsconfig.server.json' server.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run socket:watch\"",
@@ -16,12 +16,14 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "db:init": "ts-node --project tsconfig.server.json -e \"require('./lib/db/database').initializeDatabase()\"",
-    "db:reset": "rm -f socket_events.db && npm run db:init"
+    "db:reset": "rm -f socket_events.db && npm run db:init",
+    "create-admin": "ts-node --project tsconfig.server.json scripts/create-admin.ts"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.4.1",
     "lucide-react": "^0.553.0",
-    "next": "16.0.1",
+    "next": "^16.0.10",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "socket.io": "^4.8.1",
