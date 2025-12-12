@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import { initializeDatabase, addMessage, addConnection, addDisconnection, getConnections, getMessages, updateConnectionUser } from "./lib/db/database";
@@ -6,14 +7,16 @@ import { ChannelMessagePayload } from "@/lib/types/ChannelMessagePayload";
 // Initialize database
 initializeDatabase();
 
-const PORT = parseInt(process.env.SOCKET_PORT || "3001", 10);
+const PORT = parseInt(process.env.SOCKET_PORT || "4001", 10);
 const NODE_ENV = process.env.NODE_ENV || "development";
 
-const httpServer = createServer();
+const httpServer = createServer((req, res) => {
+  console.log("[RAW REQUEST]", req.method, req.url, "res: " + res);
+});
 const io = new Server(httpServer, {
   cors: {
     origin: function (origin, callback) {
-      const allowedOrigins = ["http://localhost:3000", "http://localhost:3001", "http://localhost:8000", "http://localhost", "http://127.0.0.1:5500", "https://service-new-version.test"];
+      const allowedOrigins = ["http://peykqased.test/", "http://localhost:3000", "http://localhost:3001", "http://localhost:8000", "http://localhost", "http://127.0.0.1:5500", "https://service-new-version.test"];
 
       // Allow if origin is in whitelist or if no origin provided (file://)
       if (!origin || allowedOrigins.includes(origin) || origin.startsWith("file://")) {
@@ -257,6 +260,81 @@ process.on("SIGTERM", () => {
     log("INFO", "Server closed");
     process.exit(0);
   });
+});
+
+// --- HTTP -> Socket bridge (REST endpoint) ---
+const HTTP_SECRET = process.env.SOCKET_HTTP_SECRET || "";
+
+// Minimal JSON body reader
+const readJsonBody = (req: any): Promise<any> =>
+  new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk: any) => (data += chunk));
+    req.on("end", () => {
+      try {
+        resolve(data ? JSON.parse(data) : {});
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+
+httpServer.on("request", async (req, res) => {
+  // Only handle this route
+  if (req.method !== "POST" || req.url !== "/api/emit") return;
+
+  console.log("[API EMIT HIT]", req.method, req.url);
+  // Auth
+  const auth = String(req.headers.authorization || "");
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+
+  console.log("[API EMIT AUTH]", {
+    hasSecret: Boolean(HTTP_SECRET),
+    tokenLen: token.length,
+    headerLen: auth.length,
+  });
+
+  if (!HTTP_SECRET || token !== HTTP_SECRET) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: false, message: "Unauthorized" }));
+    return;
+  }
+
+  try {
+    const body = await readJsonBody(req);
+
+    const channel = String(body.channel || "");
+    const sender = String(body.sender || "laravel");
+    const event = String(body.event || "channel-message-received");
+
+    // Accept either `text` or `payload`
+    const text = typeof body.text === "string" ? body.text : JSON.stringify(body.payload ?? {});
+
+    if (!channel) {
+      res.writeHead(422, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, message: "channel is required" }));
+      return;
+    }
+
+    // 🔥 Emit to room
+    io.to(channel).emit(event, {
+      channel,
+      sender,
+      text,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log("[API EMIT OK]", { channel, event });
+    console.log("[ROOM SIZE]", io.sockets.adapter.rooms.get(channel)?.size ?? 0);
+
+    console.log("[HTTP EMIT]", { channel, event, sender });
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  } catch (e: any) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: false, message: e?.message || "Bad Request" }));
+  }
 });
 
 // Start server
